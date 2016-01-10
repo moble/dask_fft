@@ -1,0 +1,18 @@
+import numpy as np
+from dask_fft import DAFT
+
+# Here, I'll try to test this by first making up some random data to transform, but keep it short for testing
+N = 2**26
+np.random.seed(1234)
+x = np.random.random(N) + 1j*np.random.random(N)
+
+# Now, I'll use my transformation.  For `chunksize<N`, this is nontrivial.
+chunksize = N//(2**2)
+X_da = DAFT(x, chunksize=chunksize)
+%tic
+X_mine = X_da.compute()
+%toc
+
+%tic
+X_numpy = np.fft.fft(x)
+%toc
