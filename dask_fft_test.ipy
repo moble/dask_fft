@@ -1,18 +1,41 @@
 import numpy as np
-from dask_fft import DAFT
+from h5py import File
+from dask.array import from_array
+from dask_fft import DAFT, fft_to_hdf5
+from dask.diagnostics import ProgressBar
+
+from chest import Chest  # For more flexible caching of out-of-core datasets
+cache = Chest(available_memory=(2 * 1024**3))  # Use up to 4GB max
 
 # Here, I'll try to test this by first making up some random data to transform, but keep it short for testing
-N = 2**26
+N = 64 * 1024**2
+# N = 2**26
 np.random.seed(1234)
 x = np.random.random(N) + 1j*np.random.random(N)
 
 # Now, I'll use my transformation.  For `chunksize<N`, this is nontrivial.
+# chunksize = 30 * 1024**2
 chunksize = N//(2**2)
-X_da = DAFT(x, chunksize=chunksize)
+print("Timing FFT with dask, including disk output:")
+# with ProgressBar():
 %tic
-X_mine = X_da.compute()
+fft_to_hdf5(x, 'test.h5', chunksize=chunksize, cache=cache)
 %toc
+with File('test.h5') as f:
+    X_mine = f['X'][:]
 
-%tic
-X_numpy = np.fft.fft(x)
-%toc
+if x.nbytes >= 128 * 1024**2:
+    # If the array is small enough, we'll try to compare to numpy's fft
+    print("Timing FFT in memory with numpy:")
+    %tic
+    X_numpy = np.fft.fft(x)
+    %toc
+
+    if np.allclose(X_mine, X_numpy):
+        print("Both FFTs arrived at the same result.")
+    else:
+        print("The two FFTs were different...")
+        print("X_mine:\n", X_mine, X_mine.shape, X_mine.dtype)
+        print("X_numpy:\n", X_numpy, X_numpy.shape, X_numpy.dtype)
+else:
+    print("The array is too large to compare to in-memory fft")
